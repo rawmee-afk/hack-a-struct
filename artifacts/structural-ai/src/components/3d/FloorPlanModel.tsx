@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, Bounds, ContactShadows, Grid } from '@react-three/drei';
+import { OrbitControls, Environment, ContactShadows, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { ThreeDModel, WallSegment, Room } from '@workspace/api-client-react';
 
@@ -385,15 +385,18 @@ export function FloorPlanModel({ model, rooms = [] }: FloorPlanModelProps) {
         <>
           <Canvas
             shadows={{ type: THREE.PCFShadowMap }}
-            camera={{ position: [cx * 0.6, maxDim * 1.05, cz + maxDim * 0.95], fov: 38 }}
+            camera={{
+              position: [maxDim * 0.8, maxDim * 1.1, maxDim * 1.0],
+              fov: 45,
+              near: 0.1,
+              far: maxDim * 20,
+            }}
             dpr={[1, 2]}
             gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
           >
             <color attach="background" args={['#06101e']} />
-            <fog attach="fog" args={['#06101e', maxDim * 3, maxDim * 6]} />
 
             {/* ── Lighting ────────────────────────────────────────────── */}
-            {/* Soft ambient */}
             <ambientLight intensity={0.35} color="#c8dff0" />
 
             {/* Key light — warm architectural top-right */}
@@ -402,7 +405,7 @@ export function FloorPlanModel({ model, rooms = [] }: FloorPlanModelProps) {
               position={[maxDim * 1.2, maxDim * 1.4, maxDim * 0.7]}
               intensity={2.2}
               color="#fff8f0"
-              shadow-mapSize={[4096, 4096]}
+              shadow-mapSize={[2048, 2048]}
               shadow-camera-near={0.5}
               shadow-camera-far={maxDim * 8}
               shadow-camera-left={-maxDim * 2}
@@ -419,83 +422,85 @@ export function FloorPlanModel({ model, rooms = [] }: FloorPlanModelProps) {
               color="#a0c4e8"
             />
 
-            {/* Subtle warm bounce from floor */}
+            {/* Warm bounce from floor */}
             <pointLight
-              position={[cx, 0.4, cz]}
+              position={[0, 0.4, 0]}
               intensity={0.5}
               color="#ffe8c8"
-              distance={maxDim * 2.5}
+              distance={maxDim * 4}
               decay={2}
             />
 
             {/* HDRI environment for reflections */}
             <Environment preset="warehouse" />
 
-            <Bounds fit clip observe margin={1.3}>
-              <group position={[-cx, 0, -cz]}>
+            {/* Model group — centred at origin so OrbitControls target [0,h/2,0] is correct */}
+            <group position={[-cx, 0, -cz]}>
 
-                {/* Floor slab */}
-                <FloorSlab
-                  polygon={model.floorPolygon}
-                  width={model.floorWidth}
-                  height={model.floorHeight}
+              {/* Floor slab */}
+              <FloorSlab
+                polygon={model.floorPolygon}
+                width={model.floorWidth}
+                height={model.floorHeight}
+              />
+
+              {/* Subtle floor grid */}
+              <Grid
+                position={[cx, 0.001, cz]}
+                args={[model.floorWidth * 1.05, model.floorHeight * 1.05]}
+                cellSize={1}
+                cellThickness={0.4}
+                cellColor="#1e3050"
+                sectionSize={5}
+                sectionThickness={0.8}
+                sectionColor="#2a4070"
+                fadeDistance={maxDim * 3}
+                fadeStrength={1.0}
+                infiniteGrid={false}
+              />
+
+              {/* Soft contact shadows */}
+              <ContactShadows
+                position={[cx, 0.003, cz]}
+                width={model.floorWidth * 1.15}
+                height={model.floorHeight * 1.15}
+                opacity={0.55}
+                blur={2.2}
+                far={wallHeight + 1}
+                color="#000a1e"
+              />
+
+              {/* Room floor tiles */}
+              {rooms.map((room, i) => (
+                <RoomFloor
+                  key={i}
+                  cx={room.centroidX}
+                  cz={room.centroidY}
+                  size={Math.sqrt(room.area) * 0.88}
+                  color={ROOM_TINTS[room.label] ?? DEFAULT_TINT}
                 />
+              ))}
 
-                {/* Subtle floor grid */}
-                <Grid
-                  position={[cx, 0.001, cz]}
-                  args={[model.floorWidth * 1.05, model.floorHeight * 1.05]}
-                  cellSize={1}
-                  cellThickness={0.4}
-                  cellColor="#1e3050"
-                  sectionSize={5}
-                  sectionThickness={0.8}
-                  sectionColor="#2a4070"
-                  fadeDistance={maxDim * 2.5}
-                  fadeStrength={1.2}
-                  infiniteGrid={false}
-                />
+              {/* Walls */}
+              {model.walls.map((w, i) => (
+                <Wall key={i} segment={w} height={wallHeight} />
+              ))}
 
-                {/* Soft contact shadows */}
-                <ContactShadows
-                  position={[cx, 0.003, cz]}
-                  width={model.floorWidth * 1.15}
-                  height={model.floorHeight * 1.15}
-                  opacity={0.65}
-                  blur={2.2}
-                  far={wallHeight + 1}
-                  color="#000a1e"
-                />
-
-                {/* Room floor tiles */}
-                {rooms.map((room, i) => (
-                  <RoomFloor
-                    key={i}
-                    cx={room.centroidX}
-                    cz={room.centroidY}
-                    size={Math.sqrt(room.area) * 0.88}
-                    color={ROOM_TINTS[room.label] ?? DEFAULT_TINT}
-                  />
-                ))}
-
-                {/* Walls */}
-                {model.walls.map((w, i) => (
-                  <Wall key={i} segment={w} height={wallHeight} />
-                ))}
-
-              </group>
-            </Bounds>
+            </group>
 
             <OrbitControls
               makeDefault
-              minPolarAngle={0}
-              maxPolarAngle={Math.PI / 2 - 0.04}
+              target={[0, wallHeight / 2, 0]}
+              minPolarAngle={0.05}
+              maxPolarAngle={Math.PI / 2 - 0.02}
               enableDamping
-              dampingFactor={0.05}
-              minDistance={2}
-              maxDistance={maxDim * 3.5}
-              rotateSpeed={0.7}
-              zoomSpeed={0.9}
+              dampingFactor={0.06}
+              minDistance={Math.max(2, maxDim * 0.3)}
+              maxDistance={maxDim * 5}
+              rotateSpeed={0.65}
+              zoomSpeed={1.1}
+              panSpeed={0.8}
+              enablePan={true}
             />
           </Canvas>
 
