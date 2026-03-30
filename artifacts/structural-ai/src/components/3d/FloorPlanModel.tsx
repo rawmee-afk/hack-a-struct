@@ -384,7 +384,7 @@ export function FloorPlanModel({ model, rooms = [] }: FloorPlanModelProps) {
       {view === '3d' && (
         <>
           <Canvas
-            shadows={{ type: THREE.PCFSoftShadowMap }}
+            shadows={{ type: THREE.PCFShadowMap }}
             camera={{ position: [cx * 0.6, maxDim * 1.05, cz + maxDim * 0.95], fov: 38 }}
             dpr={[1, 2]}
             gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
