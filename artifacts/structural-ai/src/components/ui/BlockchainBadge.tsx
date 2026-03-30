@@ -1,6 +1,13 @@
-import { Hexagon, ExternalLink, CheckCircle, Clock, Copy, Check, RefreshCw } from "lucide-react";
+import { Hexagon, ExternalLink, CheckCircle, Clock, Copy, Check, RefreshCw, FileCode } from "lucide-react";
 import { useState, useEffect } from "react";
-import { verifyTransaction, explorerUrl, anchorAccountUrl } from "@/lib/stellar-integration";
+import {
+  verifyTransaction,
+  explorerUrl,
+  anchorAccountUrl,
+  contractExplorerUrl,
+  contractGetCount,
+  HASH_ANCHOR_CONTRACT_ID,
+} from "@/lib/stellar-integration";
 
 interface BlockchainBadgeProps {
   hash: string;
@@ -12,12 +19,14 @@ export function BlockchainBadge({ hash, txId, network }: BlockchainBadgeProps) {
   const [copied, setCopied] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState<{ ledger?: number; createdAt?: string } | null>(null);
+  const [contractCount, setContractCount] = useState<number | null>(null);
 
   const isSimulated = network.includes("simulated");
   const txExplorerUrl = explorerUrl(txId, network);
   const accountUrl = anchorAccountUrl();
+  const contractUrl = contractExplorerUrl();
 
-  // Auto-verify on mount for real transactions
+  // Auto-verify TX and fetch on-chain contract count
   useEffect(() => {
     if (!isSimulated && txId) {
       setVerifying(true);
@@ -27,6 +36,8 @@ export function BlockchainBadge({ hash, txId, network }: BlockchainBadgeProps) {
         })
         .finally(() => setVerifying(false));
     }
+    // Read from deployed Soroban contract
+    contractGetCount().then(setContractCount);
   }, [txId, isSimulated]);
 
   const copyTxId = () => {
@@ -38,12 +49,14 @@ export function BlockchainBadge({ hash, txId, network }: BlockchainBadgeProps) {
 
   const openExplorer = () => window.open(txExplorerUrl, "_blank", "noopener,noreferrer");
   const openAccount  = () => window.open(accountUrl, "_blank", "noopener,noreferrer");
+  const openContract = () => window.open(contractUrl, "_blank", "noopener,noreferrer");
 
   const handleVerify = () => {
     setVerifying(true);
     verifyTransaction(txId)
       .then((r) => { if (r.confirmed) setVerified({ ledger: r.ledger, createdAt: r.createdAt }); })
       .finally(() => setVerifying(false));
+    contractGetCount().then(setContractCount);
   };
 
   return (
@@ -108,9 +121,19 @@ export function BlockchainBadge({ hash, txId, network }: BlockchainBadgeProps) {
             )}
           </div>
 
-          {/* Selectable URL */}
+          {/* Soroban contract info */}
+          <div className="mt-2 flex items-center gap-2 bg-white/5 rounded px-2 py-1.5">
+            <FileCode className="w-3 h-3 text-violet-400 shrink-0" />
+            <span className="text-[9px] font-mono text-muted-foreground shrink-0">CONTRACT:</span>
+            <span className="text-[9px] font-mono text-violet-300 truncate flex-1">{HASH_ANCHOR_CONTRACT_ID}</span>
+            {contractCount !== null && (
+              <span className="text-[9px] font-mono text-emerald-400 shrink-0">{contractCount} records</span>
+            )}
+          </div>
+
+          {/* Selectable TX URL */}
           {!isSimulated && (
-            <div className="mt-2 flex items-center gap-2 bg-white/5 rounded px-2 py-1">
+            <div className="mt-1 flex items-center gap-2 bg-white/5 rounded px-2 py-1">
               <span className="text-[9px] font-mono text-muted-foreground shrink-0">URL:</span>
               <span className="text-[9px] font-mono text-cyan-400 truncate select-all cursor-text">
                 {txExplorerUrl}
@@ -124,9 +147,13 @@ export function BlockchainBadge({ hash, txId, network }: BlockchainBadgeProps) {
               <ExternalLink className="w-3 h-3" />
               View TX
             </button>
+            <button onClick={openContract} className="inline-flex items-center gap-1.5 text-xs font-mono text-violet-400 hover:text-violet-300 transition-colors">
+              <ExternalLink className="w-3 h-3" />
+              Contract
+            </button>
             <button onClick={openAccount} className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-white transition-colors">
               <ExternalLink className="w-3 h-3" />
-              Anchor Account
+              Account
             </button>
             <button onClick={copyTxId} className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-white transition-colors">
               {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
