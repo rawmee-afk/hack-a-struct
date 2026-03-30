@@ -18672,7 +18672,7 @@ var require_view = __commonJS({
     "use strict";
     var debug = require_src()("express:view");
     var path2 = __require("node:path");
-    var fs = __require("node:fs");
+    var fs2 = __require("node:fs");
     var dirname = path2.dirname;
     var basename = path2.basename;
     var extname = path2.extname;
@@ -18752,7 +18752,7 @@ var require_view = __commonJS({
     function tryStat(path3) {
       debug('stat "%s"', path3);
       try {
-        return fs.statSync(path3);
+        return fs2.statSync(path3);
       } catch (e) {
         return void 0;
       }
@@ -22378,7 +22378,7 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs = __require("fs");
+    var fs2 = __require("fs");
     var mime = require_mime_types();
     var ms = require_ms();
     var onFinished = require_on_finished();
@@ -22660,7 +22660,7 @@ var require_send = __commonJS({
       var i = 0;
       var self = this;
       debug('stat "%s"', path3);
-      fs.stat(path3, function onstat(err, stat) {
+      fs2.stat(path3, function onstat(err, stat) {
         var pathEndsWithSep = path3[path3.length - 1] === sep;
         if (err && err.code === "ENOENT" && !extname(path3) && !pathEndsWithSep) {
           return next(err);
@@ -22677,7 +22677,7 @@ var require_send = __commonJS({
         }
         var p = path3 + "." + self._extensions[i++];
         debug('stat "%s"', p);
-        fs.stat(p, function(err2, stat) {
+        fs2.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -22695,7 +22695,7 @@ var require_send = __commonJS({
         }
         var p = join(path3, self._index[i]);
         debug('stat "%s"', p);
-        fs.stat(p, function(err2, stat) {
+        fs2.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -22707,7 +22707,7 @@ var require_send = __commonJS({
     SendStream.prototype.stream = function stream(path3, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs.createReadStream(path3, options);
+      var stream2 = fs2.createReadStream(path3, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -24999,7 +24999,7 @@ var require_atomic_sleep = __commonJS({
 var require_sonic_boom = __commonJS({
   "../../node_modules/.pnpm/sonic-boom@4.2.1/node_modules/sonic-boom/index.js"(exports, module) {
     "use strict";
-    var fs = __require("fs");
+    var fs2 = __require("fs");
     var EventEmitter = __require("events");
     var inherits = __require("util").inherits;
     var path2 = __require("path");
@@ -25056,20 +25056,20 @@ var require_sonic_boom = __commonJS({
       const mode = sonic.mode;
       if (sonic.sync) {
         try {
-          if (sonic.mkdir) fs.mkdirSync(path2.dirname(file), { recursive: true });
-          const fd = fs.openSync(file, flags, mode);
+          if (sonic.mkdir) fs2.mkdirSync(path2.dirname(file), { recursive: true });
+          const fd = fs2.openSync(file, flags, mode);
           fileOpened(null, fd);
         } catch (err) {
           fileOpened(err);
           throw err;
         }
       } else if (sonic.mkdir) {
-        fs.mkdir(path2.dirname(file), { recursive: true }, (err) => {
+        fs2.mkdir(path2.dirname(file), { recursive: true }, (err) => {
           if (err) return fileOpened(err);
-          fs.open(file, flags, mode, fileOpened);
+          fs2.open(file, flags, mode, fileOpened);
         });
       } else {
-        fs.open(file, flags, mode, fileOpened);
+        fs2.open(file, flags, mode, fileOpened);
       }
     }
     function SonicBoom(opts) {
@@ -25110,8 +25110,8 @@ var require_sonic_boom = __commonJS({
         this.flush = flushBuffer;
         this.flushSync = flushBufferSync;
         this._actualWrite = actualWriteBuffer;
-        fsWriteSync = () => fs.writeSync(this.fd, this._writingBuf);
-        fsWrite = () => fs.write(this.fd, this._writingBuf, this.release);
+        fsWriteSync = () => fs2.writeSync(this.fd, this._writingBuf);
+        fsWrite = () => fs2.write(this.fd, this._writingBuf, this.release);
       } else if (contentMode === void 0 || contentMode === kContentModeUtf8) {
         this._writingBuf = "";
         this.write = write;
@@ -25120,15 +25120,15 @@ var require_sonic_boom = __commonJS({
         this._actualWrite = actualWrite;
         fsWriteSync = () => {
           if (Buffer.isBuffer(this._writingBuf)) {
-            return fs.writeSync(this.fd, this._writingBuf);
+            return fs2.writeSync(this.fd, this._writingBuf);
           }
-          return fs.writeSync(this.fd, this._writingBuf, "utf8");
+          return fs2.writeSync(this.fd, this._writingBuf, "utf8");
         };
         fsWrite = () => {
           if (Buffer.isBuffer(this._writingBuf)) {
-            return fs.write(this.fd, this._writingBuf, this.release);
+            return fs2.write(this.fd, this._writingBuf, this.release);
           }
-          return fs.write(this.fd, this._writingBuf, "utf8", this.release);
+          return fs2.write(this.fd, this._writingBuf, "utf8", this.release);
         };
       } else {
         throw new Error(`SonicBoom supports "${kContentModeUtf8}" and "${kContentModeBuffer}", but passed ${contentMode}`);
@@ -25185,7 +25185,7 @@ var require_sonic_boom = __commonJS({
           }
         }
         if (this._fsync) {
-          fs.fsyncSync(this.fd);
+          fs2.fsyncSync(this.fd);
         }
         const len = this._len;
         if (this._reopening) {
@@ -25299,7 +25299,7 @@ var require_sonic_boom = __commonJS({
       const onDrain = () => {
         if (!this._fsync) {
           try {
-            fs.fsync(this.fd, (err) => {
+            fs2.fsync(this.fd, (err) => {
               this._flushPending = false;
               cb(err);
             });
@@ -25401,7 +25401,7 @@ var require_sonic_boom = __commonJS({
       const fd = this.fd;
       this.once("ready", () => {
         if (fd !== this.fd) {
-          fs.close(fd, (err) => {
+          fs2.close(fd, (err) => {
             if (err) {
               return this.emit("error", err);
             }
@@ -25450,7 +25450,7 @@ var require_sonic_boom = __commonJS({
           buf = this._bufs[0];
         }
         try {
-          const n = Buffer.isBuffer(buf) ? fs.writeSync(this.fd, buf) : fs.writeSync(this.fd, buf, "utf8");
+          const n = Buffer.isBuffer(buf) ? fs2.writeSync(this.fd, buf) : fs2.writeSync(this.fd, buf, "utf8");
           const releasedBufObj = releaseWritingBuf(buf, this._len, n);
           buf = releasedBufObj.writingBuf;
           this._len = releasedBufObj.len;
@@ -25466,7 +25466,7 @@ var require_sonic_boom = __commonJS({
         }
       }
       try {
-        fs.fsyncSync(this.fd);
+        fs2.fsyncSync(this.fd);
       } catch {
       }
     }
@@ -25487,7 +25487,7 @@ var require_sonic_boom = __commonJS({
           buf = mergeBuf(this._bufs[0], this._lens[0]);
         }
         try {
-          const n = fs.writeSync(this.fd, buf);
+          const n = fs2.writeSync(this.fd, buf);
           buf = buf.subarray(n);
           this._len = Math.max(this._len - n, 0);
           if (buf.length <= 0) {
@@ -25515,13 +25515,13 @@ var require_sonic_boom = __commonJS({
       this._writingBuf = this._writingBuf.length ? this._writingBuf : this._bufs.shift() || "";
       if (this.sync) {
         try {
-          const written = Buffer.isBuffer(this._writingBuf) ? fs.writeSync(this.fd, this._writingBuf) : fs.writeSync(this.fd, this._writingBuf, "utf8");
+          const written = Buffer.isBuffer(this._writingBuf) ? fs2.writeSync(this.fd, this._writingBuf) : fs2.writeSync(this.fd, this._writingBuf, "utf8");
           release(null, written);
         } catch (err) {
           release(err);
         }
       } else {
-        fs.write(this.fd, this._writingBuf, release);
+        fs2.write(this.fd, this._writingBuf, release);
       }
     }
     function actualWriteBuffer() {
@@ -25530,7 +25530,7 @@ var require_sonic_boom = __commonJS({
       this._writingBuf = this._writingBuf.length ? this._writingBuf : mergeBuf(this._bufs.shift(), this._lens.shift());
       if (this.sync) {
         try {
-          const written = fs.writeSync(this.fd, this._writingBuf);
+          const written = fs2.writeSync(this.fd, this._writingBuf);
           release(null, written);
         } catch (err) {
           release(err);
@@ -25539,7 +25539,7 @@ var require_sonic_boom = __commonJS({
         if (kCopyBuffer) {
           this._writingBuf = Buffer.from(this._writingBuf);
         }
-        fs.write(this.fd, this._writingBuf, release);
+        fs2.write(this.fd, this._writingBuf, release);
       }
     }
     function actualClose(sonic) {
@@ -25555,12 +25555,12 @@ var require_sonic_boom = __commonJS({
       sonic._lens = [];
       assert(typeof sonic.fd === "number", `sonic.fd must be a number, got ${typeof sonic.fd}`);
       try {
-        fs.fsync(sonic.fd, closeWrapped);
+        fs2.fsync(sonic.fd, closeWrapped);
       } catch {
       }
       function closeWrapped() {
         if (sonic.fd !== 1 && sonic.fd !== 2) {
-          fs.close(sonic.fd, done);
+          fs2.close(sonic.fd, done);
         } else {
           done();
         }
@@ -28388,8 +28388,9 @@ var require_logger = __commonJS({
 });
 
 // src/index.ts
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import * as path from "path";
+import * as fs from "fs";
 
 // src/app.ts
 var import_express3 = __toESM(require_express2(), 1);
@@ -32513,21 +32514,37 @@ app.use("/api", routes_default);
 var app_default = app;
 
 // src/index.ts
-var BACKEND_DIR = path.resolve(process.cwd(), "artifacts/structural-ai-backend");
+function findBackendDir() {
+  const candidates = [
+    // production: cwd is workspace root
+    path.resolve(process.cwd(), "artifacts/structural-ai-backend"),
+    // development: cwd is artifacts/api-server
+    path.resolve(process.cwd(), "../../artifacts/structural-ai-backend"),
+    path.resolve(process.cwd(), "../structural-ai-backend")
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
 function launchPythonBackend() {
-  logger.info({ dir: BACKEND_DIR }, "Starting Python backend\u2026");
-  const proc = spawn(
-    "bash",
-    [
-      "-c",
-      "python3 -m pip install -q -r requirements.txt && python3 -u main.py"
-    ],
-    {
-      cwd: BACKEND_DIR,
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
-      stdio: "inherit"
-    }
+  const backendDir = findBackendDir();
+  logger.info({ dir: backendDir }, "Starting Python backend\u2026");
+  const install = spawnSync(
+    "python3",
+    ["-m", "pip", "install", "-q", "-r", "requirements.txt"],
+    { cwd: backendDir, env: { ...process.env }, encoding: "utf8" }
   );
+  if (install.status !== 0) {
+    logger.warn({ stderr: install.stderr?.slice(0, 400) }, "pip install warnings");
+  } else {
+    logger.info("Python deps ready");
+  }
+  const proc = spawn("python3", ["-u", "main.py"], {
+    cwd: backendDir,
+    env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    stdio: "inherit"
+  });
   proc.on("error", (err) => {
     logger.error({ err }, "Failed to spawn Python backend");
   });
@@ -32537,7 +32554,9 @@ function launchPythonBackend() {
   });
   logger.info({ pid: proc.pid }, "Python backend process launched");
 }
-launchPythonBackend();
+if (process.env["NODE_ENV"] === "production") {
+  launchPythonBackend();
+}
 var rawPort = process.env["PORT"];
 if (!rawPort) {
   throw new Error("PORT environment variable is required but was not provided.");

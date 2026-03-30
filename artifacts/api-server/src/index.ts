@@ -1,25 +1,46 @@
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import * as path from "path";
+import * as fs from "fs";
 import app from "./app";
 import { logger } from "./lib/logger";
 
-const BACKEND_DIR = path.resolve(process.cwd(), "artifacts/structural-ai-backend");
+function findBackendDir(): string {
+  const candidates = [
+    // production: cwd is workspace root
+    path.resolve(process.cwd(), "artifacts/structural-ai-backend"),
+    // development: cwd is artifacts/api-server
+    path.resolve(process.cwd(), "../../artifacts/structural-ai-backend"),
+    path.resolve(process.cwd(), "../structural-ai-backend"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
 
 function launchPythonBackend(): void {
-  logger.info({ dir: BACKEND_DIR }, "Starting Python backend…");
+  const backendDir = findBackendDir();
+  logger.info({ dir: backendDir }, "Starting Python backend…");
 
-  const proc = spawn(
-    "bash",
-    [
-      "-c",
-      "python3 -m pip install -q -r requirements.txt && python3 -u main.py",
-    ],
-    {
-      cwd: BACKEND_DIR,
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
-      stdio: "inherit",
-    },
+  // Install deps first (synchronous, no shell needed)
+  const install = spawnSync(
+    "python3",
+    ["-m", "pip", "install", "-q", "-r", "requirements.txt"],
+    { cwd: backendDir, env: { ...process.env }, encoding: "utf8" },
   );
+
+  if (install.status !== 0) {
+    logger.warn({ stderr: install.stderr?.slice(0, 400) }, "pip install warnings");
+  } else {
+    logger.info("Python deps ready");
+  }
+
+  // Start uvicorn directly via python3
+  const proc = spawn("python3", ["-u", "main.py"], {
+    cwd: backendDir,
+    env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    stdio: "inherit",
+  });
 
   proc.on("error", (err) => {
     logger.error({ err }, "Failed to spawn Python backend");
@@ -33,8 +54,11 @@ function launchPythonBackend(): void {
   logger.info({ pid: proc.pid }, "Python backend process launched");
 }
 
-// ── Launch Python backend (non-blocking) ──────────────────────────────────────
-launchPythonBackend();
+// Only spawn the Python backend in production.
+// In development the dedicated workflow handles it.
+if (process.env["NODE_ENV"] === "production") {
+  launchPythonBackend();
+}
 
 // ── Start Express server ──────────────────────────────────────────────────────
 const rawPort = process.env["PORT"];
