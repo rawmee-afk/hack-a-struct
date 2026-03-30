@@ -22,7 +22,7 @@ function launchPythonBackend(): void {
   const backendDir = findBackendDir();
   logger.info({ dir: backendDir }, "Starting Python backend…");
 
-  // Install deps first (synchronous, no shell needed)
+  // Install deps synchronously so main.py can import them
   const install = spawnSync(
     "python3",
     ["-m", "pip", "install", "-q", "-r", "requirements.txt"],
@@ -30,16 +30,26 @@ function launchPythonBackend(): void {
   );
 
   if (install.status !== 0) {
-    logger.warn({ stderr: install.stderr?.slice(0, 400) }, "pip install warnings");
+    logger.warn({ stderr: install.stderr?.slice(0, 600) }, "pip install warnings");
   } else {
     logger.info("Python deps ready");
   }
 
-  // Start uvicorn directly via python3
+  // Spawn Python server — pipe stdout/stderr so errors appear in deployment logs
   const proc = spawn("python3", ["-u", "main.py"], {
     cwd: backendDir,
     env: { ...process.env, PYTHONUNBUFFERED: "1" },
-    stdio: "inherit",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  proc.stdout?.on("data", (d: Buffer) => {
+    const msg = d.toString().trim();
+    if (msg) logger.info({ src: "python" }, msg);
+  });
+
+  proc.stderr?.on("data", (d: Buffer) => {
+    const msg = d.toString().trim();
+    if (msg) logger.warn({ src: "python" }, msg);
   });
 
   proc.on("error", (err) => {
@@ -54,8 +64,7 @@ function launchPythonBackend(): void {
   logger.info({ pid: proc.pid }, "Python backend process launched");
 }
 
-// Only spawn the Python backend in production.
-// In development the dedicated workflow handles it.
+// Only spawn in production; dev uses the dedicated workflow
 if (process.env["NODE_ENV"] === "production") {
   launchPythonBackend();
 }

@@ -32536,14 +32536,22 @@ function launchPythonBackend() {
     { cwd: backendDir, env: { ...process.env }, encoding: "utf8" }
   );
   if (install.status !== 0) {
-    logger.warn({ stderr: install.stderr?.slice(0, 400) }, "pip install warnings");
+    logger.warn({ stderr: install.stderr?.slice(0, 600) }, "pip install warnings");
   } else {
     logger.info("Python deps ready");
   }
   const proc = spawn("python3", ["-u", "main.py"], {
     cwd: backendDir,
     env: { ...process.env, PYTHONUNBUFFERED: "1" },
-    stdio: "inherit"
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  proc.stdout?.on("data", (d) => {
+    const msg = d.toString().trim();
+    if (msg) logger.info({ src: "python" }, msg);
+  });
+  proc.stderr?.on("data", (d) => {
+    const msg = d.toString().trim();
+    if (msg) logger.warn({ src: "python" }, msg);
   });
   proc.on("error", (err) => {
     logger.error({ err }, "Failed to spawn Python backend");
