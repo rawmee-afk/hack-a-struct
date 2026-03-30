@@ -55,54 +55,75 @@ function Wall({ segment, height }: { segment: WallSegment; height: number }) {
   );
 }
 
-/** Window opening — glass pane with white aluminium frame */
+/** Window opening — double-sided glass spanning the full wall thickness */
 function Window({ win, wallHeight }: { win: WindowOpening; wallHeight: number }) {
   const { cx, cz, width, rotationY, sillHeight, openingHeight } = win;
 
-  // Clamp window geometry so it fits within wall height
-  const sill   = Math.min(sillHeight,   wallHeight * 0.30);
-  const wh     = Math.min(openingHeight, wallHeight - sill - 0.1);
+  // Constrain geometry to sensible heights
+  const sill    = Math.min(sillHeight,    wallHeight * 0.35);
+  const wh      = Math.min(openingHeight, wallHeight - sill - 0.15);
   const centerY = sill + wh / 2;
-  const fw = 0.06;   // frame width
-  const fd = 0.14;   // frame depth (protrudes from wall face)
-  const gd = 0.03;   // glass depth
+
+  const fw = 0.055;  // frame bar width
+  // Wall thickness: use 0.28 so the glass fully spans load-bearing (0.25) and partition (0.12) walls
+  const wallThick = 0.30;
+  // Glass is slightly thinner than the wall so the frame visibly encloses it
+  const gd = wallThick - 0.04;
+  // Frame depth is slightly deeper so it protrudes on both faces
+  const fd = wallThick + 0.04;
 
   return (
     <group position={[cx, centerY, cz]} rotation={[0, rotationY, 0]}>
-      {/* ── Glass pane ── */}
-      <mesh castShadow>
+      {/* ── Glass pane — double-sided so it's visible from both faces ── */}
+      <mesh>
         <boxGeometry args={[width - fw * 2, wh - fw * 2, gd]} />
-        <meshStandardMaterial color="#93c5fd" transparent opacity={0.35} roughness={0.05} metalness={0.1} envMapIntensity={2} />
+        <meshPhysicalMaterial
+          color="#bfdbfe"
+          transparent
+          opacity={0.32}
+          roughness={0.04}
+          metalness={0.0}
+          transmission={0.7}
+          thickness={0.1}
+          envMapIntensity={2.5}
+          side={THREE.DoubleSide}
+        />
       </mesh>
 
       {/* ── Frame: top rail ── */}
-      <mesh position={[0, wh / 2 - fw / 2, 0]} castShadow>
+      <mesh position={[0, wh / 2 - fw / 2, 0]}>
         <boxGeometry args={[width, fw, fd]} />
-        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
       </mesh>
 
       {/* ── Frame: bottom sill ── */}
-      <mesh position={[0, -(wh / 2 - fw / 2), 0]} castShadow>
+      <mesh position={[0, -(wh / 2 - fw / 2), 0]}>
         <boxGeometry args={[width, fw, fd]} />
-        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
       </mesh>
 
       {/* ── Frame: left jamb ── */}
-      <mesh position={[-(width / 2 - fw / 2), 0, 0]} castShadow>
+      <mesh position={[-(width / 2 - fw / 2), 0, 0]}>
         <boxGeometry args={[fw, wh, fd]} />
-        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
       </mesh>
 
       {/* ── Frame: right jamb ── */}
-      <mesh position={[width / 2 - fw / 2, 0, 0]} castShadow>
+      <mesh position={[width / 2 - fw / 2, 0, 0]}>
         <boxGeometry args={[fw, wh, fd]} />
-        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
       </mesh>
 
       {/* ── Centre mullion ── */}
-      <mesh position={[0, 0, 0]} castShadow>
-        <boxGeometry args={[fw * 0.7, wh - fw * 2, fd]} />
-        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+      <mesh>
+        <boxGeometry args={[fw * 0.6, wh - fw * 2, fd]} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
+      </mesh>
+
+      {/* ── Horizontal mid-rail ── */}
+      <mesh position={[0, wh * 0.12, 0]}>
+        <boxGeometry args={[width - fw * 2, fw * 0.6, fd]} />
+        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
       </mesh>
     </group>
   );

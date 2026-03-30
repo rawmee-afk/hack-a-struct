@@ -364,6 +364,62 @@ def _is_boundary_segment(x1, y1, x2, y2, img_w, img_h, margin_frac=0.08) -> bool
     return False
 
 
+def _snap_to_cardinal(x1: float, y1: float,
+                      x2: float, y2: float,
+                      snap_deg: float = 12.0
+                      ) -> Tuple[float, float, float, float]:
+    """
+    Snap near-horizontal and near-vertical wall segments to exact 0°/90°.
+    Eliminates the slight diagonal drift from noisy Hough detection.
+    """
+    dx, dy = x2 - x1, y2 - y1
+    angle  = abs(math.degrees(math.atan2(dy, dx))) % 180
+
+    # Near-horizontal → flatten Y to midpoint
+    if angle < snap_deg or angle > (180 - snap_deg):
+        y_mid = (y1 + y2) / 2
+        return x1, y_mid, x2, y_mid
+
+    # Near-vertical → flatten X to midpoint
+    if 90 - snap_deg < angle < 90 + snap_deg:
+        x_mid = (x1 + x2) / 2
+        return x_mid, y1, x_mid, y2
+
+    return x1, y1, x2, y2
+
+
+def _detect_door_arc_mask(binary: np.ndarray,
+                          img_w: int, img_h: int) -> np.ndarray:
+    """
+    Detect quarter-circle door-swing arcs using HoughCircles.
+    Returns a uint8 mask (255 = door arc zone, 0 = free) dilated by the arc
+    radius so nearby wall stubs are also excluded.
+    """
+    mask = np.zeros((img_h, img_w), dtype=np.uint8)
+    gray = binary.copy()
+
+    min_r = min(img_w, img_h) // 30
+    max_r = min(img_w, img_h) // 6
+
+    circles = cv2.HoughCircles(
+        gray,
+        cv2.HOUGH_GRADIENT,
+        dp=1.5,
+        minDist=min_r * 2,
+        param1=60,
+        param2=25,
+        minRadius=min_r,
+        maxRadius=max_r,
+    )
+    if circles is not None:
+        for cx, cy, r in np.round(circles[0]).astype(int):
+            # Draw filled circle + margin so any wall segment PASSING THROUGH
+            # the arc region is also discarded
+            cv2.circle(mask, (cx, cy), r + max(6, r // 5), 255, -1)
+
+    return mask
+
+
 def _detect_walls_hough(binary: np.ndarray, img_w: int, img_h: int,
                         vis_scale: float) -> List[Dict]:
     edges    = cv2.Canny(binary, 50, 150, apertureSize=3)
@@ -374,12 +430,27 @@ def _detect_walls_hough(binary: np.ndarray, img_w: int, img_h: int,
     )
     walls: List[Dict] = []
 
+    # Build door-arc exclusion mask
+    arc_mask = _detect_door_arc_mask(binary, img_w, img_h)
+
     if lines is not None:
         for x1, y1, x2, y2 in _merge_lines(lines):
             length_px = math.hypot(x2 - x1, y2 - y1)
             if length_px < min_line:
                 continue
-            thick_px    = _measure_wall_thickness_px(binary, x1, y1, x2, y2)
+
+            # Reject segments whose midpoint falls inside a door-arc zone
+            mx, my = int((x1 + x2) / 2), int((y1 + y2) / 2)
+            if 0 <= mx < img_w and 0 <= my < img_h:
+                if arc_mask[my, mx] > 0:
+                    continue
+
+            # Snap near-cardinal walls to exact 0°/90°
+            x1, y1, x2, y2 = _snap_to_cardinal(x1, y1, x2, y2)
+
+            # Re-compute length after snap
+            length_px   = max(math.hypot(x2 - x1, y2 - y1), 1.0)
+            thick_px    = _measure_wall_thickness_px(binary, int(x1), int(y1), int(x2), int(y2))
             on_boundary = _is_boundary_segment(x1, y1, x2, y2, img_w, img_h)
             wtype       = _wall_type_from_thickness(thick_px, on_boundary)
 
@@ -395,33 +466,69 @@ def _detect_walls_hough(binary: np.ndarray, img_w: int, img_h: int,
 
 def _merge_lines(lines: np.ndarray,
                  angle_thr: float = 10,
-                 dist_thr:  float = 15) -> List[Tuple]:
-    segs   = [tuple(l[0]) for l in lines]
-    merged = []
+                 dist_thr:  float = 18) -> List[Tuple]:
+    """
+    Merge nearby parallel Hough line segments into single wall segments.
+
+    Improvement over naive bounding-box approach:
+    - Groups by angle bucket (cardinal or diagonal)
+    - Projects all endpoints onto the dominant axis direction
+    - Computes extent along that axis; uses average perpendicular offset
+    - Result: straight, axis-aligned segments instead of diagonal bounding boxes
+    """
+    segs = [tuple(l[0]) for l in lines]
+    if not segs:
+        return []
+
+    merged: List[Tuple] = []
     used   = [False] * len(segs)
 
     for i, si in enumerate(segs):
         if used[i]:
             continue
-        group   = [si]
+
+        ai_raw = math.atan2(si[3] - si[1], si[2] - si[0]) * 180 / math.pi
+        ai     = ai_raw % 180          # normalise to [0, 180)
+        group  = [si]
         used[i] = True
-        ai      = math.atan2(si[3] - si[1], si[2] - si[0]) * 180 / math.pi
 
         for j, sj in enumerate(segs):
             if used[j]:
                 continue
-            aj = math.atan2(sj[3] - sj[1], sj[2] - sj[0]) * 180 / math.pi
+            aj = math.atan2(sj[3] - sj[1], sj[2] - sj[0]) * 180 / math.pi % 180
             da = abs(ai - aj) % 180
-            if da < angle_thr or abs(da - 180) < angle_thr:
-                mi = ((si[0] + si[2]) / 2, (si[1] + si[3]) / 2)
-                mj = ((sj[0] + sj[2]) / 2, (sj[1] + sj[3]) / 2)
-                if math.hypot(mi[0] - mj[0], mi[1] - mj[1]) < dist_thr * 3:
-                    group.append(sj)
-                    used[j] = True
+            if da > angle_thr and abs(da - 180) > angle_thr:
+                continue
+            # Proximity check: midpoints must be close relative to line length
+            mi = ((si[0] + si[2]) / 2, (si[1] + si[3]) / 2)
+            mj = ((sj[0] + sj[2]) / 2, (sj[1] + sj[3]) / 2)
+            if math.hypot(mi[0] - mj[0], mi[1] - mj[1]) < dist_thr * 4:
+                group.append(sj)
+                used[j] = True
 
-        xs = [p for s in group for p in (s[0], s[2])]
-        ys = [p for s in group for p in (s[1], s[3])]
-        merged.append((min(xs), min(ys), max(xs), max(ys)))
+        # ── Find dominant direction ───────────────────────────────────────
+        angles_rad = [math.atan2(s[3] - s[1], s[2] - s[0]) for s in group]
+        avg_angle  = sum(angles_rad) / len(angles_rad)
+        ux, uy     = math.cos(avg_angle), math.sin(avg_angle)  # unit along line
+        px, py     = -uy, ux                                    # unit perpendicular
+
+        # Collect all endpoints
+        pts = [(s[0], s[1]) for s in group] + [(s[2], s[3]) for s in group]
+
+        # Project onto line direction (scalar along ux/uy)
+        projs  = [p[0] * ux + p[1] * uy for p in pts]
+        # Average perpendicular offset (gives the "spine" of the group)
+        perps  = [p[0] * px + p[1] * py for p in pts]
+        p_avg  = sum(perps) / len(perps)
+
+        # Reconstruct start and end from min/max projection + average perp
+        t_min, t_max = min(projs), max(projs)
+        x1 = ux * t_min + px * p_avg
+        y1 = uy * t_min + py * p_avg
+        x2 = ux * t_max + px * p_avg
+        y2 = uy * t_max + py * p_avg
+
+        merged.append((x1, y1, x2, y2))
 
     return merged
 
