@@ -44,22 +44,22 @@ These are real transactions from actual analyses — verifiable on stellar.exper
 |---|---|
 | `919a3619dc2565bfca357d7bddee28156a8f9cf967c6cd320b1e29e430d4aa18` | [View on Stellar Expert](https://stellar.expert/explorer/testnet/tx/919a3619dc2565bfca357d7bddee28156a8f9cf967c6cd320b1e29e430d4aa18) |
 
-### Soroban Smart Contract
+### Soroban Smart Contract (Deployed)
 
-The `contracts/hash-anchor/` directory contains a Soroban smart contract for on-chain hash registry. It exposes:
-- `store_hash(report_hash)` — write a SHA-256 digest, returns record ID
-- `get_hash(id)` — retrieve by record ID
-- `get_count()` — total records stored
+The `contracts/hash-anchor/` Soroban contract is **live on Stellar testnet**.
 
-**Deploy to testnet:**
-```bash
-cd contracts
-cargo build --release --target wasm32-unknown-unknown
-stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/hash_anchor.wasm \
-  --source <your-secret-key> \
-  --network testnet
-```
+| Field | Value |
+|---|---|
+| Contract ID | `CC4S4DUCM7FRWU2OZZA7F76JBXDWRFQLXFXNTON6XSC6DXH567B3WDOZ` |
+| WASM Hash | `4e72496da69557b5d302274aa7103f8df2452df8668dec5362925716be289023` |
+| Deploy TX | `a94a3e78b30ff91afb469029e3dd59949efd87d6a10898c7c04e362cd830b271` |
+| Network | Stellar Testnet |
+| Explorer | https://stellar.expert/explorer/testnet/contract/CC4S4DUCM7FRWU2OZZA7F76JBXDWRFQLXFXNTON6XSC6DXH567B3WDOZ |
+
+**Contract functions:**
+- `store_hash(report_hash: String) → u64` — writes a SHA-256 digest, returns record ID
+- `get_hash(id: u64) → Option<String>` — retrieves a stored hash by record ID
+- `get_count() → u64` — total number of hashes stored
 
 ---
 

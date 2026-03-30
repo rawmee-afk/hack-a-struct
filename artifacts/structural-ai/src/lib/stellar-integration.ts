@@ -15,6 +15,10 @@ const NETWORK_PASSPHRASE = Networks.TESTNET;
 const ANCHOR_PUBLIC_KEY =
   "GABJGR3IP74R7A5J2HJTM5QVJUWXZHQ6FHBEH5JCDP3ZXVDMTQYZNCOV";
 
+// Deployed Soroban hash-anchor contract on Stellar testnet
+export const HASH_ANCHOR_CONTRACT_ID =
+  "CC4S4DUCM7FRWU2OZZA7F76JBXDWRFQLXFXNTON6XSC6DXH567B3WDOZ";
+
 const server = new Horizon.Server(HORIZON_URL);
 
 export interface StellarTxResult {
