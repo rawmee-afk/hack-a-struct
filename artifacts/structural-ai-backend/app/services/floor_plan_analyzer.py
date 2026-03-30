@@ -279,8 +279,12 @@ def analyze_floor_plan(image_data: bytes) -> Dict[str, Any]:
     # ── Floor polygon for 3-D slab ─────────────────────────────────────────
     floor_polygon = _extract_floor_polygon(binary_rooms, width, height, vis_scale)
 
+    # ── Window detection ──────────────────────────────────────────────────
+    windows = _detect_windows(binary_walls, width, height, vis_scale, walls)
+
     model3d = {
         "walls":        walls,
+        "windows":      windows,
         "wallHeight":   3.0,
         "floorWidth":   width  * vis_scale,
         "floorHeight":  height * vis_scale,
@@ -553,6 +557,138 @@ def _extract_floor_polygon(binary_rooms: np.ndarray,
                for pt in approx]
 
     return polygon if len(polygon) >= 3 else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Window detection
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _pt_to_seg_dist(px: float, py: float,
+                    ax: float, ay: float,
+                    bx: float, by: float) -> float:
+    """Perpendicular (or endpoint) distance from point P to segment AB."""
+    abx, aby = bx - ax, by - ay
+    len2 = abx * abx + aby * aby
+    if len2 == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * abx + (py - ay) * aby) / len2))
+    return math.hypot(px - (ax + t * abx), py - (ay + t * aby))
+
+
+def _detect_windows(
+    binary: np.ndarray,
+    img_w: int, img_h: int,
+    vis_scale: float,
+    walls: List[Dict],
+) -> List[Dict]:
+    """
+    Detect window openings on exterior walls.
+
+    Windows in architectural drawings appear as short thin double-line
+    segments set within the wall thickness on outer walls.
+
+    Strategy:
+    1.  Run HoughLinesP with a shorter min-length to pick up window lines
+        (which are shorter than wall lines and thinner).
+    2.  Keep only lines that are close to a load-bearing (exterior) wall
+        and are themselves thin (window symbol, not a wall).
+    3.  Merge nearby/parallel candidates into single window records.
+    4.  Convert to scene-unit WindowOpening dicts.
+    """
+    windows: List[Dict] = []
+
+    # ── Exterior wall pixel segments ──────────────────────────────────────
+    ext_walls_px = [
+        (w["x1"] / vis_scale, w["y1"] / vis_scale,
+         w["x2"] / vis_scale, w["y2"] / vis_scale)
+        for w in walls if w.get("wallType") == "load_bearing"
+    ]
+    if not ext_walls_px:
+        return windows
+
+    # ── Short-line Hough scan ─────────────────────────────────────────────
+    edges = cv2.Canny(binary, 30, 120, apertureSize=3)
+    min_win_px = max(10, min(img_w, img_h) // 35)
+    max_win_px = min(img_w, img_h) // 7
+
+    raw = cv2.HoughLinesP(
+        edges, 1, np.pi / 180,
+        threshold=25,
+        minLineLength=min_win_px,
+        maxLineGap=4,
+    )
+    if raw is None:
+        return windows
+
+    candidates: List[Tuple] = []
+    for line in raw:
+        x1, y1, x2, y2 = line[0]
+        length_px = math.hypot(x2 - x1, y2 - y1)
+        if length_px > max_win_px:
+            continue
+        # Thin check: window lines are thin (2-4 px), walls are thick (8+)
+        thick = _measure_wall_thickness_px(binary, x1, y1, x2, y2)
+        if thick > 6:
+            continue  # too thick — it's a wall segment, not a window
+
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+
+        # Must be within proximity of an exterior wall
+        min_d = min(_pt_to_seg_dist(cx, cy, ax, ay, bx, by)
+                    for ax, ay, bx, by in ext_walls_px)
+        if min_d > 18:
+            continue
+
+        angle = math.atan2(y2 - y1, x2 - x1)
+        candidates.append((cx, cy, length_px, angle, x1, y1, x2, y2))
+
+    if not candidates:
+        return windows
+
+    # ── Merge nearby/parallel candidates (same window = 2 parallel lines) ─
+    used = [False] * len(candidates)
+    merged: List[Dict] = []
+
+    for i, ci in enumerate(candidates):
+        if used[i]:
+            continue
+        group = [ci]
+        used[i] = True
+        for j, cj in enumerate(candidates):
+            if used[j] or i == j:
+                continue
+            # Same direction?
+            da = abs(ci[3] - cj[3]) % math.pi
+            if da > 0.2 and abs(da - math.pi) > 0.2:
+                continue
+            # Close to each other?
+            if math.hypot(ci[0] - cj[0], ci[1] - cj[1]) < 20:
+                group.append(cj)
+                used[j] = True
+
+        # Use the longest line in the group as the representative
+        rep = max(group, key=lambda c: c[2])
+        cx, cy, lpx, angle = rep[0], rep[1], rep[2], rep[3]
+
+        merged.append({
+            "cx":    cx,
+            "cy":    cy,
+            "width": lpx * vis_scale,
+            "angle": angle,
+        })
+
+    # ── Convert to WindowOpening records ─────────────────────────────────
+    for m in merged[:16]:
+        windows.append({
+            "cx":            round(m["cx"] * vis_scale, 3),
+            "cz":            round(m["cy"] * vis_scale, 3),
+            "width":         round(max(m["width"], 0.6), 2),
+            "rotationY":     round(-m["angle"], 4),
+            "sillHeight":    0.9,
+            "openingHeight": 1.2,
+        })
+
+    return windows
 
 
 # ─────────────────────────────────────────────────────────────────────────────

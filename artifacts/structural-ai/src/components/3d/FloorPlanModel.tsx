@@ -2,7 +2,7 @@ import { useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment, Bounds } from '@react-three/drei';
 import * as THREE from 'three';
-import { ThreeDModel, WallSegment } from '@workspace/api-client-react';
+import { ThreeDModel, WallSegment, WindowOpening } from '@workspace/api-client-react';
 
 interface FloorPlanModelProps {
   model: ThreeDModel;
@@ -24,9 +24,9 @@ function Wall({ segment, height }: { segment: WallSegment; height: number }) {
   }, [segment]);
 
   // Load-bearing → bright cyan-white; partition → steel blue
-  const color       = isLoadBearing ? '#22d3ee' : '#64748b';
-  const emissive    = isLoadBearing ? '#0e7490' : '#1e293b';
-  const opacity     = isLoadBearing ? 0.92 : 0.78;
+  const color    = isLoadBearing ? '#22d3ee' : '#64748b';
+  const emissive = isLoadBearing ? '#0e7490' : '#1e293b';
+  const opacity  = isLoadBearing ? 0.92 : 0.78;
 
   return (
     <mesh
@@ -55,6 +55,59 @@ function Wall({ segment, height }: { segment: WallSegment; height: number }) {
   );
 }
 
+/** Window opening — glass pane with white aluminium frame */
+function Window({ win, wallHeight }: { win: WindowOpening; wallHeight: number }) {
+  const { cx, cz, width, rotationY, sillHeight, openingHeight } = win;
+
+  // Clamp window geometry so it fits within wall height
+  const sill   = Math.min(sillHeight,   wallHeight * 0.30);
+  const wh     = Math.min(openingHeight, wallHeight - sill - 0.1);
+  const centerY = sill + wh / 2;
+  const fw = 0.06;   // frame width
+  const fd = 0.14;   // frame depth (protrudes from wall face)
+  const gd = 0.03;   // glass depth
+
+  return (
+    <group position={[cx, centerY, cz]} rotation={[0, rotationY, 0]}>
+      {/* ── Glass pane ── */}
+      <mesh castShadow>
+        <boxGeometry args={[width - fw * 2, wh - fw * 2, gd]} />
+        <meshStandardMaterial color="#93c5fd" transparent opacity={0.35} roughness={0.05} metalness={0.1} envMapIntensity={2} />
+      </mesh>
+
+      {/* ── Frame: top rail ── */}
+      <mesh position={[0, wh / 2 - fw / 2, 0]} castShadow>
+        <boxGeometry args={[width, fw, fd]} />
+        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+      </mesh>
+
+      {/* ── Frame: bottom sill ── */}
+      <mesh position={[0, -(wh / 2 - fw / 2), 0]} castShadow>
+        <boxGeometry args={[width, fw, fd]} />
+        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+      </mesh>
+
+      {/* ── Frame: left jamb ── */}
+      <mesh position={[-(width / 2 - fw / 2), 0, 0]} castShadow>
+        <boxGeometry args={[fw, wh, fd]} />
+        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+      </mesh>
+
+      {/* ── Frame: right jamb ── */}
+      <mesh position={[width / 2 - fw / 2, 0, 0]} castShadow>
+        <boxGeometry args={[fw, wh, fd]} />
+        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+      </mesh>
+
+      {/* ── Centre mullion ── */}
+      <mesh position={[0, 0, 0]} castShadow>
+        <boxGeometry args={[fw * 0.7, wh - fw * 2, fd]} />
+        <meshStandardMaterial color="#e2e8f0" roughness={0.25} metalness={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
 /** Floor slab — uses exact polygon footprint when available, falls back to rectangle */
 function FloorSlab({
   polygon,
@@ -78,7 +131,6 @@ function FloorSlab({
     return new THREE.PlaneGeometry(width, height);
   }, [polygon, width, height]);
 
-  // For polygon: centre is implicitly within the shape; for rectangle centre at (w/2, h/2)
   const posX = polygon ? 0 : width / 2;
   const posZ = polygon ? 0 : height / 2;
 
@@ -99,11 +151,11 @@ export function FloorPlanModel({ model }: FloorPlanModelProps) {
   const floorCenterZ = model.floorHeight / 2;
   const maxDim       = Math.max(model.floorWidth, model.floorHeight);
 
-  // Ensure wall height is exactly 3.0 m
   const wallHeight = model.wallHeight ?? 3.0;
 
   const loadBearingCount = model.walls.filter(w => w.wallType === 'load_bearing').length;
   const partitionCount   = model.walls.filter(w => w.wallType === 'partition').length;
+  const windowCount      = model.windows?.length ?? 0;
 
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden glass-panel border-primary/20 relative">
@@ -116,11 +168,13 @@ export function FloorPlanModel({ model }: FloorPlanModelProps) {
         <div className="bg-background/80 backdrop-blur px-3 py-1.5 rounded-md border border-border text-xs font-mono text-muted-foreground">
           <span className="text-cyan-400">■</span> LB: {loadBearingCount}
           &nbsp;&nbsp;
-          <span className="text-slate-400">■</span> Partition: {partitionCount}
+          <span className="text-slate-400">■</span> Part: {partitionCount}
+          {windowCount > 0 && (
+            <>&nbsp;&nbsp;<span className="text-sky-300">⬜</span> Win: {windowCount}</>
+          )}
         </div>
       </div>
 
-      {/* Use PCFShadowMap explicitly — avoids PCFSoftShadowMap deprecation warning */}
       <Canvas
         shadows={{ type: THREE.PCFShadowMap }}
         camera={{
@@ -169,9 +223,14 @@ export function FloorPlanModel({ model }: FloorPlanModelProps) {
               fadeDistance={maxDim}
             />
 
-            {/* Walls — extruded to exactly wallHeight (3.0 m) */}
+            {/* Walls */}
             {model.walls.map((wall, idx) => (
               <Wall key={idx} segment={wall} height={wallHeight} />
+            ))}
+
+            {/* Windows — glass panes with aluminium frames */}
+            {model.windows?.map((win, idx) => (
+              <Window key={`win-${idx}`} win={win} wallHeight={wallHeight} />
             ))}
           </group>
         </Bounds>
@@ -196,6 +255,9 @@ export function FloorPlanModel({ model }: FloorPlanModelProps) {
       <div className="absolute bottom-4 left-4 bg-background/80 backdrop-blur px-3 py-2 rounded-md border border-border text-xs font-mono flex flex-col gap-1">
         <p><span className="text-cyan-400 font-bold">■</span> Load-bearing (SF=1.5, 230mm)</p>
         <p><span className="text-slate-400 font-bold">■</span> Partition (SF=1.23, 115mm)</p>
+        {windowCount > 0 && (
+          <p><span className="text-sky-300 font-bold">⬜</span> Windows ({windowCount} detected)</p>
+        )}
       </div>
     </div>
   );
