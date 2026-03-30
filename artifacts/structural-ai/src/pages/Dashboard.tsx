@@ -11,6 +11,13 @@ import {
   Hexagon, TriangleAlert, Ruler, Building2, ShieldCheck,
 } from "lucide-react";
 import { formatArea } from "@/lib/utils";
+
+// Format a number as Indian Rupees (lakhs / crores)
+function formatINR(n: number): string {
+  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)} Cr`;
+  if (n >= 100_000)    return `₹${(n / 100_000).toFixed(2)} L`;
+  return `₹${Math.round(n).toLocaleString("en-IN")}`;
+}
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 
@@ -287,6 +294,57 @@ export default function Dashboard() {
                     ))}
                   </div>
                 </div>
+
+                {/* Total Estimated Cost */}
+                {(() => {
+                  const recs   = result.recommendations.slice(0, 5);
+                  const costs  = recs.map(r => r.estimatedCostPerSqM * result.totalArea);
+                  const best   = Math.min(...costs);
+                  const worst  = Math.max(...costs);
+                  const topRec = result.recommendations[0];
+                  const topCost = topRec ? topRec.estimatedCostPerSqM * result.totalArea : 0;
+                  return (
+                    <div className="glass-panel rounded-xl p-5 border border-emerald-500/20">
+                      <p className="text-xs font-mono text-emerald-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                        Total Estimated Cost
+                      </p>
+                      {/* Headline figure */}
+                      <div className="text-3xl font-display font-bold text-white mb-1">
+                        {formatINR(topCost)}
+                      </div>
+                      <p className="text-xs text-muted-foreground font-mono mb-4">
+                        Based on&nbsp;<span className="text-white">{topRec?.material}</span>
+                        &nbsp;@ ₹{topRec?.estimatedCostPerSqM.toLocaleString("en-IN")}/m²
+                        &nbsp;×&nbsp;{result.totalArea.toFixed(1)} m²
+                      </p>
+                      {/* Range bar */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[11px] font-mono text-muted-foreground">
+                          <span>Economy</span>
+                          <span>Premium</span>
+                        </div>
+                        <div className="relative h-2 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full"
+                            style={{ width: `${Math.min(100, (topCost - best) / Math.max(worst - best, 1) * 100 + 10)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[11px] font-mono">
+                          <span className="text-emerald-400">{formatINR(best)}</span>
+                          <span className="text-amber-400">{formatINR(worst)}</span>
+                        </div>
+                      </div>
+                      {/* Per-sqm note */}
+                      <p className="mt-3 text-[11px] font-mono text-muted-foreground border-t border-border pt-3">
+                        Cost range across top 5 materials:&nbsp;
+                        ₹{Math.min(...recs.map(r => r.estimatedCostPerSqM)).toLocaleString("en-IN")}
+                        &nbsp;–&nbsp;
+                        ₹{Math.max(...recs.map(r => r.estimatedCostPerSqM)).toLocaleString("en-IN")} /m²
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {/* Blockchain badge */}
                 {result.blockchainHash && result.blockchainTxId && (
