@@ -6,25 +6,64 @@ No LLM. No paid API. Everything runs deterministically.
 
 ---
 
-## The problem
+## Project Vision
 
-Construction teams make expensive material choices based on experience and guesswork. There's no fast, objective tool that looks at an actual floor plan and says: given this span, this budget, and this climate — here are your best 6 options with scores and tradeoffs.
-
-This project tries to be that tool.
+Construction decisions about materials, spans, and structural systems are still made largely by experience and intuition. For smaller projects in developing regions, engineers often don't have access to quick comparative analysis tools. hack-a-struct aims to make structural material intelligence accessible — upload any floor plan, get scored recommendations, and have every result permanently recorded on the blockchain so it can be audited later. The goal is to eventually support architects, site engineers, and approval bodies who need fast, verifiable structural reports.
 
 ---
 
-## What happens when you upload a floor plan
+## Key Features
 
-1. **OpenCV** scans the image for wall contours, classifies each as load-bearing or partition, and measures room polygons to get real-world m² areas
-2. A **scoring formula** runs across 37 materials and ranks them based on your span length, budget tier (low/medium/high), and climate
-3. The report gets **SHA-256 hashed** and submitted as a real transaction to the Stellar testnet — timestamp and hash are permanently on-chain
-4. **Three.js** renders an interactive 3D model from the detected wall data
-5. Everything is saved to **SQLite** so you can revisit past reports
+- **Floor plan analysis** — OpenCV detects walls, classifies load-bearing vs partition, measures room polygons to real-world m² using pixel-to-metre calibration
+- **37-material scoring** — deterministic formula across 6 categories (Masonry, Concrete, Steel, Timber, Earth, Composite) with real engineering properties
+- **3D visualization** — Three.js renders an interactive model from the detected wall data with orbit controls and shadow maps
+- **Stellar blockchain anchoring** — every report is SHA-256 hashed and submitted as a real Stellar testnet transaction; TX is live and verifiable
+- **Frontend SDK verification** — React app uses `@stellar/stellar-sdk` (JavaScript) to query and verify transactions directly from the browser
+- **Soroban smart contract** — `contracts/hash-anchor/` contains the on-chain hash registry (Rust/Soroban), deployable to any Stellar network
+- **Report history** — all analyses stored in SQLite, accessible from the Reports page
 
 ---
 
-## Scoring formula
+## Deployed Blockchain Details
+
+### Stellar Account (Anchor)
+
+All report hashes are anchored from this testnet account:
+
+| Field | Value |
+|---|---|
+| Public Key | `GABJGR3IP74R7A5J2HJTM5QVJUWXZHQ6FHBEH5JCDP3ZXVDMTQYZNCOV` |
+| Network | Stellar Testnet |
+| Explorer | https://stellar.expert/explorer/testnet/account/GABJGR3IP74R7A5J2HJTM5QVJUWXZHQ6FHBEH5JCDP3ZXVDMTQYZNCOV |
+
+### Sample Verified Transactions
+
+These are real transactions from actual analyses — verifiable on stellar.expert right now:
+
+| TX ID | Verified |
+|---|---|
+| `919a3619dc2565bfca357d7bddee28156a8f9cf967c6cd320b1e29e430d4aa18` | [View on Stellar Expert](https://stellar.expert/explorer/testnet/tx/919a3619dc2565bfca357d7bddee28156a8f9cf967c6cd320b1e29e430d4aa18) |
+
+### Soroban Smart Contract
+
+The `contracts/hash-anchor/` directory contains a Soroban smart contract for on-chain hash registry. It exposes:
+- `store_hash(report_hash)` — write a SHA-256 digest, returns record ID
+- `get_hash(id)` — retrieve by record ID
+- `get_count()` — total records stored
+
+**Deploy to testnet:**
+```bash
+cd contracts
+cargo build --release --target wasm32-unknown-unknown
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/hash_anchor.wasm \
+  --source <your-secret-key> \
+  --network testnet
+```
+
+---
+
+## How the scoring works
 
 ```
 Score = 0.35 × Strength
@@ -34,7 +73,7 @@ Score = 0.35 × Strength
       − SpanPenalty
 ```
 
-- `BudgetMultiplier` — low budget boosts cost weight (1.5×), high budget reduces it (0.6×)
+- `BudgetMultiplier` — low budget boosts cost weight (1.5×), high reduces it (0.6×)
 - `SpanPenalty` — if detected span > material's safe limit, deduct up to 40 pts proportionally
 - `Durability` — service life normalised over 150 years
 
@@ -51,20 +90,6 @@ Score = 0.35 × Strength
 | Earth | 4 | 400 – 900 |
 | Composite | 7 | 1,500 – 4,500 |
 
-The top 6 scoring materials are shown in the report with category badges, per-score breakdowns, pros/cons, and estimated cost per m².
-
----
-
-## Blockchain anchoring
-
-Every analysis produces a report hash. That hash gets written to Stellar as a `manage_data` operation — a built-in Stellar transaction type for storing small key-value payloads on-chain.
-
-- Confirms in ~3 seconds
-- Costs a fraction of a cent
-- Permanently verifiable at `stellar.expert/explorer/testnet/tx/<txId>`
-
-If the report data is changed after the fact, the SHA-256 won't match. That's the tamper-proof guarantee.
-
 ---
 
 ## Stack
@@ -73,9 +98,11 @@ If the report data is changed after the fact, the SHA-256 won't match. That's th
 |---|---|
 | Frontend | React + Vite + TypeScript + TailwindCSS |
 | 3D rendering | Three.js + @react-three/fiber |
+| Stellar (frontend) | @stellar/stellar-sdk (JavaScript) |
 | Backend | Python 3.11 + FastAPI + OpenCV |
+| Stellar (backend) | stellar-sdk (Python) |
 | API gateway | Node.js + Express |
-| Blockchain | Stellar SDK (testnet) |
+| Smart contract | Rust + Soroban SDK v22 |
 | Database | SQLite |
 
 ---
@@ -83,32 +110,37 @@ If the report data is changed after the fact, the SHA-256 won't match. That's th
 ## Project layout
 
 ```
-artifacts/
-  structural-ai-backend/
-    app/services/
-      floor_plan_analyzer.py     ← OpenCV wall + room detection
-      material_recommender.py    ← 37-material scoring engine
-      stellar_blockchain.py      ← SHA-256 hash + Stellar TX
-    app/routes/
-      analysis.py                ← POST /api/analyze
-      reports.py                 ← GET /api/reports
-    main.py
-    requirements.txt
-
-  structural-ai/src/
-    pages/Dashboard.tsx          ← main upload + results page
-    components/3d/               ← Three.js floor plan viewer
-    components/ui/
-      BlockchainBadge.tsx        ← TX display + copy button
-      MaterialCard.tsx           ← per-material score card
-
-  api-server/src/
-    app.ts                       ← Express proxy to Python backend
+hack-a-struct/
+├── contracts/
+│   ├── Cargo.toml                        ← workspace config
+│   ├── .gitignore
+│   └── hash-anchor/
+│       ├── Cargo.toml
+│       ├── README.md
+│       └── src/lib.rs                    ← Soroban contract (store_hash, get_hash)
+│
+├── artifacts/
+│   ├── structural-ai-backend/
+│   │   ├── app/services/
+│   │   │   ├── floor_plan_analyzer.py    ← OpenCV wall + room detection
+│   │   │   ├── material_recommender.py   ← 37-material scoring engine
+│   │   │   └── stellar_blockchain.py     ← SHA-256 hash + Stellar TX (Python SDK)
+│   │   └── main.py / requirements.txt
+│   │
+│   ├── structural-ai/src/
+│   │   ├── lib/stellar-integration.ts    ← Stellar JS SDK: verify TX from browser
+│   │   ├── pages/Dashboard.tsx           ← upload + results
+│   │   ├── components/3d/                ← Three.js viewer
+│   │   └── components/ui/BlockchainBadge.tsx  ← live TX verification widget
+│   │
+│   └── api-server/src/app.ts             ← Express proxy
+│
+└── README.md
 ```
 
 ---
 
-## Running it
+## Project Setup
 
 **Python backend**
 ```bash
@@ -124,13 +156,37 @@ pnpm --filter @workspace/structural-ai run dev
 pnpm --filter @workspace/api-server run dev
 ```
 
-Stellar uses a pre-funded testnet account — no setup or env vars needed to run locally.
+Stellar uses a pre-funded testnet account — no env vars needed to run locally.
+
+**Smart contract (local deploy)**
+```bash
+rustup target add wasm32-unknown-unknown
+cd contracts
+cargo build --release --target wasm32-unknown-unknown
+stellar contract deploy \
+  --wasm hash-anchor/target/wasm32-unknown-unknown/release/hash_anchor.wasm \
+  --source <secret-key> \
+  --network testnet
+```
+
+---
+
+## Future Scope
+
+- **Soroban contract integration** — once deployed, the React frontend can call `store_hash` directly via `@stellar/stellar-sdk` without going through the Python backend
+- **Image hash anchoring** — currently we hash the analysis output; we could also hash the original image file for complete chain of custody
+- **Multi-network support** — deploy to Stellar mainnet for production use
+- **PDF report generation** — export a signed PDF with the TX ID embedded as a QR code for building permit submissions
+- **Seismic/wind load analysis** — extend the scoring formula to include IS:1893 and IS:875 load factors
+- **Multi-floor support** — currently handles single-floor plans; extend to multi-storey with staircase detection
+- **Mobile app** — React Native app for on-site photo-to-analysis workflow
 
 ---
 
 ## Honest limitations
 
-- Works best on clean architectural line drawings. Noisy or hand-drawn plans give rougher results
+- Works best on clean architectural line drawings; noisy or hand-drawn plans give rougher wall detection
 - Room labeling is heuristic (largest polygon → Living Room, position-based for others)
-- Stellar is testnet only — tokens have no real value
+- Stellar integration is testnet only — tokens have no real value
 - The blockchain records the hash of the analysis output, not the original image file
+- Soroban contract needs local Rust toolchain to compile and deploy
