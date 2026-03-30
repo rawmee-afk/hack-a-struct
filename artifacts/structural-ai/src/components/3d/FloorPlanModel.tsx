@@ -211,11 +211,6 @@ export function FloorPlanModel({ model, rooms = [] }: FloorPlanModelProps) {
               />
             ))}
 
-            {/* Room labels */}
-            {rooms.map((room, i) => (
-              <RoomLabel key={`l${i}`} cx={room.centroidX} cz={room.centroidY} label={room.label} />
-            ))}
-
             {/* Walls */}
             {model.walls.map((w, i) => (
               <Wall key={i} segment={w} height={wallHeight} />
