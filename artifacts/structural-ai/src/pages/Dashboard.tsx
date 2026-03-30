@@ -243,6 +243,24 @@ export default function Dashboard() {
                   <Hexagon className="w-5 h-5 text-primary" /> Structural Topography
                 </h2>
                 <FloorPlanModel model={result.model3d} rooms={result.rooms} />
+
+                {/* GPT Structural Assessment */}
+                {result.structuralAssessment && (
+                  <div className="mt-4 glass-panel rounded-xl p-5 border border-primary/20">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                      <span className="text-xs font-mono text-violet-400 uppercase tracking-widest font-bold">
+                        AI Structural Assessment
+                      </span>
+                      <span className="ml-auto text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                        GPT-4o
+                      </span>
+                    </div>
+                    <p className="text-sm leading-relaxed text-slate-300 font-mono">
+                      {result.structuralAssessment}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-5">

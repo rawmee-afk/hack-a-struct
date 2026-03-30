@@ -16,6 +16,7 @@ Upload any floor plan image → the system detects every wall, identifies rooms,
 
 | Feature | Details |
 |---|---|
+| **GPT-4o Assessment** | Expert structural narrative generated per analysis via GPT-4o-mini |
 | **CV Wall Detection** | OpenCV flood-fill + morphology detects load-bearing vs partition walls |
 | **Room Labeling** | Area + centroid heuristics auto-label Living Room, Bedroom, Kitchen… |
 | **3D Extrusion** | Three.js (`@react-three/fiber`) renders walls at correct heights with room labels |

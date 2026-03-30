@@ -8,6 +8,7 @@ from typing import Optional
 from app.services.floor_plan_analyzer import analyze_floor_plan
 from app.services.material_recommender import get_llm_recommendations
 from app.services.stellar_blockchain import hash_report, store_on_stellar
+from app.services.structural_assessor import get_structural_assessment
 from app import database
 
 router = APIRouter()
@@ -73,6 +74,19 @@ async def analyze(
         buildup_area=buildup_area,
     )
 
+    # ── GPT structural assessment ─────────────────────────────────────────
+    structural_assessment = get_structural_assessment(
+        rooms=analysis["rooms"],
+        walls=analysis["walls"],
+        total_area=total_area,
+        floor_width=analysis["model3d"]["floorWidth"],
+        floor_height=analysis["model3d"]["floorHeight"],
+        lb_count=lb_count,
+        pt_count=pt_count,
+        max_span=max_span,
+        span_category=span_category,
+    )
+
     # ── Blockchain integrity ───────────────────────────────────────────────
     report_data = {**analysis, "recommendations": recommendations}
     report_hash = hash_report(report_data)
@@ -104,9 +118,10 @@ async def analyze(
         "avg_span":           avg_span,
         "load_bearing_count": lb_count,
         "partition_count":    pt_count,
-        "recommendations":    recommendations,
-        "model3d":            analysis["model3d"],
-        "blockchain_hash":    report_hash,
+        "recommendations":       recommendations,
+        "structural_assessment": structural_assessment,
+        "model3d":               analysis["model3d"],
+        "blockchain_hash":       report_hash,
         "blockchain_tx_id":   blockchain_tx_id,
         "stellar_network":    stellar_network,
         "summary":            summary,
@@ -128,9 +143,10 @@ async def analyze(
         "loadBearingCount": lb_count,
         "partitionCount":   pt_count,
         "spanCategory":     span_category,
-        "recommendations":  recommendations,
-        "model3d":          analysis["model3d"],
-        "blockchainHash":   report_hash,
+        "recommendations":       recommendations,
+        "structuralAssessment":  structural_assessment,
+        "model3d":               analysis["model3d"],
+        "blockchainHash":        report_hash,
         "blockchainTxId":   blockchain_tx_id,
         "stellarNetwork":   stellar_network,
         "createdAt":        db_record["created_at"],
