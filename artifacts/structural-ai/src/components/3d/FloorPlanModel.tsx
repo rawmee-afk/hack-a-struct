@@ -129,11 +129,27 @@ function FloorSlab({ polygon, width, height }: { polygon?: [number, number][] | 
   );
 }
 
+// ── Snap a 2D wall segment to nearest H/V axis if within threshold ────────────
+function snap2DWall(x1: number, y1: number, x2: number, y2: number) {
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  const ratio = 0.2; // within 20% → snap
+  if (dy < dx * ratio) {
+    const my = (y1 + y2) / 2;
+    return { x1, y1: my, x2, y2: my };      // horizontal
+  }
+  if (dx < dy * ratio) {
+    const mx = (x1 + x2) / 2;
+    return { x1: mx, y1, x2: mx, y2 };      // vertical
+  }
+  return { x1, y1, x2, y2 };                // diagonal — keep
+}
+
 // ── 2D SVG floor plan ─────────────────────────────────────────────────────────
 function FloorPlan2D({ model, rooms }: { model: ThreeDModel; rooms: Room[] }) {
-  const PAD  = 28;
-  const W    = 640;
-  const H    = 500;
+  const PAD  = 48;
+  const W    = 660;
+  const H    = 520;
   const scaleX = (W - PAD * 2) / model.floorWidth;
   const scaleY = (H - PAD * 2) / model.floorHeight;
   const sc   = Math.min(scaleX, scaleY);
@@ -143,81 +159,166 @@ function FloorPlan2D({ model, rooms }: { model: ThreeDModel; rooms: Room[] }) {
   const tx = (x: number) => offX + x * sc;
   const ty = (y: number) => offY + y * sc;
 
-  return (
-    <div className="w-full h-[540px] rounded-xl overflow-hidden border border-border relative bg-[#f8f7f4] flex items-center justify-center">
-      <svg width={W} height={H} fontFamily="'JetBrains Mono', monospace">
+  // Snap all walls
+  const snappedWalls = model.walls.map(w => ({
+    ...w,
+    ...snap2DWall(w.x1, w.y1, w.x2, w.y2),
+  }));
 
-        {/* Room fills */}
+  // Scale bar length: find a nice number ~10% of floor width
+  const barMeters = Math.round(model.floorWidth * 0.15) || 1;
+  const barPx     = barMeters * sc;
+  const barX      = offX;
+  const barY      = H - 18;
+
+  return (
+    <div className="w-full h-[540px] rounded-xl overflow-hidden border border-border relative bg-white flex items-center justify-center">
+      <svg width={W} height={H} style={{ fontFamily: 'ui-monospace, monospace' }}>
+        <defs>
+          {/* Subtle grid pattern */}
+          <pattern id="grid2d" width={sc} height={sc} patternUnits="userSpaceOnUse"
+            x={offX} y={offY}>
+            <path d={`M ${sc} 0 L 0 0 0 ${sc}`} fill="none" stroke="#e8eaed" strokeWidth="0.5" />
+          </pattern>
+          {/* Load-bearing hatch */}
+          <pattern id="lbhatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="6" stroke="#92400e" strokeWidth="2.5" />
+          </pattern>
+        </defs>
+
+        {/* White page background */}
+        <rect width={W} height={H} fill="white" />
+
+        {/* Grid */}
+        <rect x={offX} y={offY}
+          width={model.floorWidth * sc} height={model.floorHeight * sc}
+          fill="url(#grid2d)"
+        />
+
+        {/* Floor outline */}
+        <rect
+          x={offX} y={offY}
+          width={model.floorWidth * sc} height={model.floorHeight * sc}
+          fill="#f9fafb" stroke="#94a3b8" strokeWidth={1}
+        />
+
+        {/* ── Room fills ──────────────────────────────────────────────── */}
         {rooms.map((room, i) => {
-          const s = Math.sqrt(room.area) * sc * 0.88;
+          const side = Math.sqrt(room.area) * sc * 0.84;
+          const rx   = tx(room.centroidX) - side / 2;
+          const ry   = ty(room.centroidY) - side / 2;
+          const fill = ROOM_2D[room.label] ?? '#eef1f5';
           return (
-            <rect key={i}
-              x={tx(room.centroidX) - s / 2}
-              y={ty(room.centroidY) - s / 2}
-              width={s} height={s} rx={3}
-              fill={ROOM_2D[room.label] ?? '#eef0f4'}
-              stroke="#c8d0dc" strokeWidth={0.8}
-            />
+            <g key={i}>
+              <rect x={rx} y={ry} width={side} height={side} rx={2}
+                fill={fill} stroke={fill} strokeWidth={0} opacity={0.85}
+              />
+            </g>
           );
         })}
 
-        {/* Walls */}
-        {model.walls.map((w, i) => {
-          const isLB = w.wallType === 'load_bearing';
-          // Snap coordinates to look straighter in 2D too
-          const x1 = tx(w.x1), y1 = ty(w.y1);
-          const x2 = tx(w.x2), y2 = ty(w.y2);
-          return (
-            <line key={i}
-              x1={x1} y1={y1} x2={x2} y2={y2}
-              stroke={isLB ? '#b45309' : '#334155'}
-              strokeWidth={isLB ? 4.5 : 2.8}
+        {/* ── Partition walls (draw first, under LB) ──────────────────── */}
+        {snappedWalls.filter(w => w.wallType !== 'load_bearing').map((w, i) => (
+          <line key={`pt-${i}`}
+            x1={tx(w.x1)} y1={ty(w.y1)} x2={tx(w.x2)} y2={ty(w.y2)}
+            stroke="#334155" strokeWidth={3}
+            strokeLinecap="square" strokeLinejoin="miter"
+          />
+        ))}
+
+        {/* ── Load-bearing walls (on top, thicker, darker) ─────────────── */}
+        {snappedWalls.filter(w => w.wallType === 'load_bearing').map((w, i) => (
+          <g key={`lb-${i}`}>
+            {/* Solid dark fill */}
+            <line
+              x1={tx(w.x1)} y1={ty(w.y1)} x2={tx(w.x2)} y2={ty(w.y2)}
+              stroke="#1c1917" strokeWidth={7}
               strokeLinecap="square"
             />
-          );
-        })}
+            {/* Amber highlight edge */}
+            <line
+              x1={tx(w.x1)} y1={ty(w.y1)} x2={tx(w.x2)} y2={ty(w.y2)}
+              stroke="#d97706" strokeWidth={2}
+              strokeLinecap="square" opacity={0.7}
+              strokeDasharray="4 3"
+            />
+          </g>
+        ))}
 
-        {/* Room labels */}
+        {/* ── Room labels ──────────────────────────────────────────────── */}
         {rooms.map((room, i) => {
-          const s = Math.sqrt(room.area) * sc;
-          if (s < 28) return null;
+          const side = Math.sqrt(room.area) * sc;
+          if (side < 32) return null;
+          const fs = Math.min(10.5, side * 0.115);
           return (
-            <text key={i}
-              x={tx(room.centroidX)} y={ty(room.centroidY)}
-              textAnchor="middle" dominantBaseline="middle"
-              fontSize={Math.min(10, s * 0.13)}
-              fill="#1e293b" fontWeight="700" letterSpacing="0.04em"
-            >
-              {room.label.toUpperCase()}
-            </text>
+            <g key={`lbl-${i}`}>
+              {/* Shadow */}
+              <text
+                x={tx(room.centroidX) + 0.5} y={ty(room.centroidY) + 0.5}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize={fs} fill="rgba(0,0,0,0.15)" fontWeight="700"
+              >
+                {room.label.toUpperCase()}
+              </text>
+              {/* Label */}
+              <text
+                x={tx(room.centroidX)} y={ty(room.centroidY)}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize={fs} fill="#1e293b" fontWeight="700"
+                letterSpacing="0.04em"
+              >
+                {room.label.toUpperCase()}
+              </text>
+              {/* Area */}
+              {side > 55 && (
+                <text
+                  x={tx(room.centroidX)} y={ty(room.centroidY) + fs + 3}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontSize={fs * 0.75} fill="#64748b" fontWeight="400"
+                >
+                  {room.area.toFixed(1)} m²
+                </text>
+              )}
+            </g>
           );
         })}
 
-        {/* Dimensions */}
-        <text x={W / 2} y={H - 6} textAnchor="middle" fontSize={9} fill="#64748b">
-          {model.floorWidth.toFixed(1)} m × {model.floorHeight.toFixed(1)} m
+        {/* ── Scale bar ────────────────────────────────────────────────── */}
+        <rect x={barX} y={barY - 5} width={barPx} height={6}
+          fill="none" stroke="#64748b" strokeWidth={1.2} />
+        <line x1={barX} y1={barY - 5} x2={barX} y2={barY + 5} stroke="#64748b" strokeWidth={1.2} />
+        <line x1={barX + barPx} y1={barY - 5} x2={barX + barPx} y2={barY + 5} stroke="#64748b" strokeWidth={1.2} />
+        <text x={barX + barPx / 2} y={barY - 9} textAnchor="middle" fontSize={8.5} fill="#64748b">
+          {barMeters} m
         </text>
 
-        {/* North indicator */}
-        <text x={W - 20} y={22} textAnchor="middle" fontSize={11} fill="#64748b" fontWeight="700">N</text>
-        <line x1={W - 20} y1={25} x2={W - 20} y2={34} stroke="#64748b" strokeWidth={1.5} markerEnd="url(#arr)" />
+        {/* ── North indicator ──────────────────────────────────────────── */}
+        <g transform={`translate(${W - 34}, 34)`}>
+          <circle cx={0} cy={0} r={14} fill="white" stroke="#cbd5e1" strokeWidth={1} />
+          <polygon points="0,-10 4,2 0,-1 -4,2" fill="#1e293b" />
+          <polygon points="0,10 4,-2 0,1 -4,-2" fill="#94a3b8" />
+          <text x={0} y={-14} textAnchor="middle" fontSize={8} fill="#334155" fontWeight="700">N</text>
+        </g>
+
+        {/* ── Title ────────────────────────────────────────────────────── */}
+        <text x={W / 2} y={20} textAnchor="middle" fontSize={10} fill="#94a3b8" letterSpacing="0.12em">
+          FLOOR PLAN  —  {model.floorWidth.toFixed(1)} × {model.floorHeight.toFixed(1)} m
+        </text>
       </svg>
 
       {/* Legend */}
-      <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur px-3 py-2 rounded-lg border border-gray-200 text-[11px] font-mono flex flex-col gap-1">
+      <div className="absolute bottom-3 right-3 bg-white/95 shadow-sm border border-gray-100 px-3 py-2 rounded-lg text-[10.5px] font-mono flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-1 rounded bg-[#b45309]" />
-          <span className="text-slate-700">Load-bearing</span>
+          <div className="w-5 h-[7px] bg-[#1c1917] rounded-sm" />
+          <span className="text-slate-600 tracking-wide">LOAD-BEARING</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-5 h-0.5 rounded bg-[#334155]" />
-          <span className="text-slate-700">Partition</span>
+          <div className="w-5 h-[3px] bg-[#334155] rounded-sm" />
+          <span className="text-slate-600 tracking-wide">PARTITION</span>
         </div>
-      </div>
-
-      {/* Scale */}
-      <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur px-3 py-2 rounded-lg border border-gray-200 text-[11px] font-mono text-slate-600">
-        {rooms.length} rooms · {model.walls.length} walls
+        <div className="pt-1 border-t border-gray-100 text-slate-400">
+          {rooms.length} rooms · {model.walls.length} walls
+        </div>
       </div>
     </div>
   );
