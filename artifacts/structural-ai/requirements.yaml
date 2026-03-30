@@ -1,0 +1,18 @@
+packages:
+  "@react-three/fiber": "React renderer for Three.js for the 3D viewer"
+  "@react-three/drei": "Useful helpers for react-three-fiber"
+  "three": "Underlying 3D engine"
+  "framer-motion": "Animations and smooth transitions for dashboard elements"
+  "recharts": "Data visualization for material cost/strength scores"
+  "react-dropzone": "Drag and drop file upload for floor plans"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility for merging tailwind classes safely"
+
+images:
+  - path: "artifacts/structural-ai/public/images/auth-bg.png"
+    description: "Abstract dark engineering architectural wireframe glowing cyan lines on dark slate background"
+    aspect_ratio: "16:9"
+
+notes:
+  - "The API is at /api and hooks are imported from @workspace/api-client-react"
+  - "Using Three.js for rendering the 3D model of the floor plan walls"

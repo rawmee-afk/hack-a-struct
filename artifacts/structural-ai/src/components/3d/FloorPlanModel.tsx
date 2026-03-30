@@ -1,151 +1,60 @@
-import { useRef, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Grid, Environment, Bounds } from '@react-three/drei';
+import { OrbitControls, Grid, Environment, Bounds, Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { ThreeDModel, WallSegment, WindowOpening } from '@workspace/api-client-react';
+import { ThreeDModel, WallSegment, Room } from '@workspace/api-client-react';
 
 interface FloorPlanModelProps {
   model: ThreeDModel;
+  rooms?: Room[];
 }
 
-/** Single extruded wall — coloured by structural type */
+// ─── Single extruded wall ──────────────────────────────────────────────────────
+
 function Wall({ segment, height }: { segment: WallSegment; height: number }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  const { length, thickness, centerX, centerZ, rotationY, isLoadBearing } = useMemo(() => {
+  const { length, centerX, centerZ, rotationY, isLoadBearing } = useMemo(() => {
     const dx = segment.x2 - segment.x1;
-    const dy = segment.y2 - segment.y1;
-    const calcLength  = segment.length || Math.hypot(dx, dy);
-    const centerX     = (segment.x1 + segment.x2) / 2;
-    const centerZ     = (segment.y1 + segment.y2) / 2;
-    const rotationY   = -Math.atan2(dy, dx);
-    const isLoadBearing = segment.wallType === 'load_bearing';
-    return { length: calcLength, thickness: segment.thickness, centerX, centerZ, rotationY, isLoadBearing };
+    const dz = segment.y2 - segment.y1;
+    return {
+      length:        segment.length || Math.hypot(dx, dz),
+      centerX:       (segment.x1 + segment.x2) / 2,
+      centerZ:       (segment.y1 + segment.y2) / 2,
+      rotationY:     -Math.atan2(dz, dx),
+      isLoadBearing: segment.wallType === 'load_bearing',
+    };
   }, [segment]);
-
-  // Load-bearing → bright cyan-white; partition → steel blue
-  const color    = isLoadBearing ? '#22d3ee' : '#64748b';
-  const emissive = isLoadBearing ? '#0e7490' : '#1e293b';
-  const opacity  = isLoadBearing ? 0.92 : 0.78;
 
   return (
     <mesh
-      ref={meshRef}
       position={[centerX, height / 2, centerZ]}
       rotation={[0, rotationY, 0]}
       castShadow
       receiveShadow
     >
-      <boxGeometry args={[length, height, thickness]} />
+      <boxGeometry args={[length, height, Math.max(segment.thickness, 0.06)]} />
       <meshStandardMaterial
-        color={color}
-        emissive={emissive}
+        color={isLoadBearing ? '#38bdf8' : '#64748b'}
+        emissive={isLoadBearing ? '#0c4a6e' : '#1e293b'}
         emissiveIntensity={0.25}
         roughness={0.2}
         metalness={0.7}
         transparent
-        opacity={opacity}
-        envMapIntensity={1.5}
+        opacity={isLoadBearing ? 0.95 : 0.85}
       />
-      <lineSegments>
-        <edgesGeometry args={[new THREE.BoxGeometry(length, height, thickness)]} />
-        <lineBasicMaterial color="#ffffff" opacity={0.2} transparent />
-      </lineSegments>
     </mesh>
   );
 }
 
-/** Window opening — double-sided glass spanning the full wall thickness */
-function Window({ win, wallHeight }: { win: WindowOpening; wallHeight: number }) {
-  const { cx, cz, width, rotationY, sillHeight, openingHeight } = win;
+// ─── Floor slab ────────────────────────────────────────────────────────────────
 
-  // Constrain geometry to sensible heights
-  const sill    = Math.min(sillHeight,    wallHeight * 0.35);
-  const wh      = Math.min(openingHeight, wallHeight - sill - 0.15);
-  const centerY = sill + wh / 2;
-
-  const fw = 0.055;  // frame bar width
-  // Wall thickness: use 0.28 so the glass fully spans load-bearing (0.25) and partition (0.12) walls
-  const wallThick = 0.30;
-  // Glass is slightly thinner than the wall so the frame visibly encloses it
-  const gd = wallThick - 0.04;
-  // Frame depth is slightly deeper so it protrudes on both faces
-  const fd = wallThick + 0.04;
-
-  return (
-    <group position={[cx, centerY, cz]} rotation={[0, rotationY, 0]}>
-      {/* ── Glass pane — double-sided so it's visible from both faces ── */}
-      <mesh>
-        <boxGeometry args={[width - fw * 2, wh - fw * 2, gd]} />
-        <meshPhysicalMaterial
-          color="#bfdbfe"
-          transparent
-          opacity={0.32}
-          roughness={0.04}
-          metalness={0.0}
-          transmission={0.7}
-          thickness={0.1}
-          envMapIntensity={2.5}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-
-      {/* ── Frame: top rail ── */}
-      <mesh position={[0, wh / 2 - fw / 2, 0]}>
-        <boxGeometry args={[width, fw, fd]} />
-        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
-      </mesh>
-
-      {/* ── Frame: bottom sill ── */}
-      <mesh position={[0, -(wh / 2 - fw / 2), 0]}>
-        <boxGeometry args={[width, fw, fd]} />
-        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
-      </mesh>
-
-      {/* ── Frame: left jamb ── */}
-      <mesh position={[-(width / 2 - fw / 2), 0, 0]}>
-        <boxGeometry args={[fw, wh, fd]} />
-        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
-      </mesh>
-
-      {/* ── Frame: right jamb ── */}
-      <mesh position={[width / 2 - fw / 2, 0, 0]}>
-        <boxGeometry args={[fw, wh, fd]} />
-        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
-      </mesh>
-
-      {/* ── Centre mullion ── */}
-      <mesh>
-        <boxGeometry args={[fw * 0.6, wh - fw * 2, fd]} />
-        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
-      </mesh>
-
-      {/* ── Horizontal mid-rail ── */}
-      <mesh position={[0, wh * 0.12, 0]}>
-        <boxGeometry args={[width - fw * 2, fw * 0.6, fd]} />
-        <meshStandardMaterial color="#f1f5f9" roughness={0.2} metalness={0.65} />
-      </mesh>
-    </group>
-  );
-}
-
-/** Floor slab — uses exact polygon footprint when available, falls back to rectangle */
 function FloorSlab({
-  polygon,
-  width,
-  height,
-}: {
-  polygon?: [number, number][] | null;
-  width: number;
-  height: number;
-}) {
+  polygon, width, height,
+}: { polygon?: [number, number][] | null; width: number; height: number }) {
   const geometry = useMemo(() => {
     if (polygon && polygon.length >= 3) {
       const shape = new THREE.Shape();
       shape.moveTo(polygon[0][0], polygon[0][1]);
-      for (let i = 1; i < polygon.length; i++) {
-        shape.lineTo(polygon[i][0], polygon[i][1]);
-      }
+      for (let i = 1; i < polygon.length; i++) shape.lineTo(polygon[i][0], polygon[i][1]);
       shape.closePath();
       return new THREE.ShapeGeometry(shape);
     }
@@ -156,129 +65,154 @@ function FloorSlab({
   const posZ = polygon ? 0 : height / 2;
 
   return (
-    <mesh
-      geometry={geometry}
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[posX, -0.01, posZ]}
-      receiveShadow
-    >
-      <meshStandardMaterial color="#1e293b" roughness={0.85} metalness={0.15} />
+    <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} position={[posX, -0.015, posZ]} receiveShadow>
+      <meshStandardMaterial color="#0f172a" roughness={0.9} metalness={0.05} />
     </mesh>
   );
 }
 
-export function FloorPlanModel({ model }: FloorPlanModelProps) {
-  const floorCenterX = model.floorWidth  / 2;
-  const floorCenterZ = model.floorHeight / 2;
-  const maxDim       = Math.max(model.floorWidth, model.floorHeight);
+// ─── Subtle room label ─────────────────────────────────────────────────────────
 
+function RoomLabel({ cx, cz, label }: { cx: number; cz: number; label: string }) {
+  return (
+    <Html
+      position={[cx, 0.1, cz]}
+      center
+      zIndexRange={[10, 20]}
+      style={{ pointerEvents: 'none' }}
+    >
+      <div style={{
+        fontSize: '8px',
+        fontFamily: 'monospace',
+        fontWeight: 600,
+        letterSpacing: '0.08em',
+        color: 'rgba(148,163,184,0.65)',
+        whiteSpace: 'nowrap',
+        textTransform: 'uppercase',
+        userSelect: 'none',
+      }}>
+        {label}
+      </div>
+    </Html>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
+export function FloorPlanModel({ model, rooms = [] }: FloorPlanModelProps) {
+  const cx = model.floorWidth  / 2;
+  const cz = model.floorHeight / 2;
+  const maxDim    = Math.max(model.floorWidth, model.floorHeight);
   const wallHeight = model.wallHeight ?? 3.0;
 
-  const loadBearingCount = model.walls.filter(w => w.wallType === 'load_bearing').length;
-  const partitionCount   = model.walls.filter(w => w.wallType === 'partition').length;
-  const windowCount      = model.windows?.length ?? 0;
+  const lbCount = model.walls.filter(w => w.wallType === 'load_bearing').length;
+  const ptCount = model.walls.filter(w => w.wallType === 'partition').length;
 
   return (
-    <div className="w-full h-[500px] rounded-xl overflow-hidden glass-panel border-primary/20 relative">
-      {/* Status bar */}
-      <div className="absolute top-4 left-4 z-10 flex gap-2 flex-wrap">
+    <div className="w-full h-[540px] rounded-xl overflow-hidden glass-panel border-primary/20 relative">
+
+      {/* Status badges */}
+      <div className="absolute top-3 left-3 z-10 flex gap-2">
         <div className="bg-background/80 backdrop-blur px-3 py-1.5 rounded-md border border-border flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span className="text-xs font-mono text-primary font-medium">3D_RENDER_ACTIVE</span>
+          <span className="text-xs font-mono text-primary font-medium">3D_MODEL</span>
         </div>
         <div className="bg-background/80 backdrop-blur px-3 py-1.5 rounded-md border border-border text-xs font-mono text-muted-foreground">
-          <span className="text-cyan-400">■</span> LB: {loadBearingCount}
-          &nbsp;&nbsp;
-          <span className="text-slate-400">■</span> Part: {partitionCount}
-          {windowCount > 0 && (
-            <>&nbsp;&nbsp;<span className="text-sky-300">⬜</span> Win: {windowCount}</>
-          )}
+          <span className="text-cyan-400">■</span> {lbCount} LB&nbsp;
+          <span className="text-slate-500">■</span> {ptCount} PT
         </div>
       </div>
 
       <Canvas
         shadows={{ type: THREE.PCFShadowMap }}
         camera={{
-          position: [floorCenterX, maxDim * 1.2, floorCenterZ + maxDim * 0.8],
-          fov: 45,
+          position: [cx, maxDim * 1.0, cz + maxDim * 0.85],
+          fov: 42,
         }}
+        dpr={[1, 2]}
       >
-        <color attach="background" args={['#0f172a']} />
-        <fog attach="fog" args={['#0f172a', maxDim, maxDim * 3]} />
+        <color attach="background" args={['#070d1a']} />
 
-        <ambientLight intensity={0.4} />
+        <ambientLight intensity={0.3} color="#8ab4d0" />
         <directionalLight
           castShadow
-          position={[maxDim, maxDim, maxDim]}
-          intensity={1.5}
+          position={[maxDim * 0.8, maxDim, maxDim * 0.5]}
+          intensity={1.4}
+          color="#e8f4ff"
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-near={0.1}
-          shadow-camera-far={maxDim * 4}
-          shadow-camera-left={-maxDim}
-          shadow-camera-right={maxDim}
-          shadow-camera-top={maxDim}
-          shadow-camera-bottom={-maxDim}
+          shadow-camera-near={0.5}
+          shadow-camera-far={maxDim * 5}
+          shadow-camera-left={-maxDim * 1.5}
+          shadow-camera-right={maxDim * 1.5}
+          shadow-camera-top={maxDim * 1.5}
+          shadow-camera-bottom={-maxDim * 1.5}
+        />
+        <directionalLight
+          position={[-maxDim * 0.4, maxDim * 0.4, -maxDim * 0.4]}
+          intensity={0.25}
+          color="#9bbfdf"
         />
 
         <Environment preset="city" />
 
-        <Bounds fit clip observe margin={1.2}>
-          <group position={[-floorCenterX, 0, -floorCenterZ]}>
-            {/* Precise floor slab */}
+        <Bounds fit clip observe margin={1.3}>
+          <group position={[-cx, 0, -cz]}>
+
             <FloorSlab
               polygon={model.floorPolygon}
               width={model.floorWidth}
               height={model.floorHeight}
             />
 
-            {/* Grid overlay */}
             <Grid
-              position={[floorCenterX, 0.01, floorCenterZ]}
+              position={[cx, 0.001, cz]}
               args={[model.floorWidth, model.floorHeight]}
               cellSize={1}
-              cellThickness={0.5}
-              cellColor="#334155"
+              cellThickness={0.3}
+              cellColor="#1a2d40"
               sectionSize={5}
-              sectionThickness={1}
-              sectionColor="#475569"
-              fadeDistance={maxDim}
+              sectionThickness={0.7}
+              sectionColor="#1e3040"
+              fadeDistance={maxDim * 1.6}
             />
 
-            {/* Walls */}
-            {model.walls.map((wall, idx) => (
-              <Wall key={idx} segment={wall} height={wallHeight} />
+            {model.walls.map((wall, i) => (
+              <Wall key={i} segment={wall} height={wallHeight} />
             ))}
 
-            {/* Windows — glass panes with aluminium frames */}
-            {model.windows?.map((win, idx) => (
-              <Window key={`win-${idx}`} win={win} wallHeight={wallHeight} />
+            {rooms.map((room, i) => (
+              <RoomLabel
+                key={i}
+                cx={room.centroidX}
+                cz={room.centroidY}
+                label={room.label}
+              />
             ))}
+
           </group>
         </Bounds>
 
         <OrbitControls
           makeDefault
           minPolarAngle={0}
-          maxPolarAngle={Math.PI / 2 - 0.05}
+          maxPolarAngle={Math.PI / 2 - 0.03}
           enableDamping
-          dampingFactor={0.05}
+          dampingFactor={0.06}
+          minDistance={2}
+          maxDistance={maxDim * 3}
         />
       </Canvas>
 
-      {/* Info overlay */}
-      <div className="absolute bottom-4 right-4 bg-background/80 backdrop-blur px-3 py-2 rounded-md border border-border text-xs font-mono text-muted-foreground flex flex-col gap-1">
-        <p>WALL_HEIGHT: <span className="text-white">{wallHeight.toFixed(1)} m</span></p>
-        <p>FLOOR: <span className="text-white">{model.floorWidth.toFixed(1)} × {model.floorHeight.toFixed(1)} m</span></p>
-        <p>CTRL: Orbit · SHIFT+DRAG: Pan</p>
+      {/* Bottom-right info */}
+      <div className="absolute bottom-3 right-3 bg-background/80 backdrop-blur px-3 py-2 rounded-md border border-border text-xs font-mono text-muted-foreground flex flex-col gap-0.5">
+        <p>H: <span className="text-white">{wallHeight.toFixed(1)} m</span></p>
+        <p>{model.floorWidth.toFixed(1)} × {model.floorHeight.toFixed(1)} m</p>
       </div>
 
       {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-background/80 backdrop-blur px-3 py-2 rounded-md border border-border text-xs font-mono flex flex-col gap-1">
-        <p><span className="text-cyan-400 font-bold">■</span> Load-bearing (SF=1.5, 230mm)</p>
-        <p><span className="text-slate-400 font-bold">■</span> Partition (SF=1.23, 115mm)</p>
-        {windowCount > 0 && (
-          <p><span className="text-sky-300 font-bold">⬜</span> Windows ({windowCount} detected)</p>
-        )}
+      <div className="absolute bottom-3 left-3 bg-background/80 backdrop-blur px-3 py-2 rounded-md border border-border text-xs font-mono flex flex-col gap-0.5">
+        <p><span className="text-cyan-400">■</span> Load-bearing</p>
+        <p><span className="text-slate-500">■</span> Partition</p>
       </div>
     </div>
   );

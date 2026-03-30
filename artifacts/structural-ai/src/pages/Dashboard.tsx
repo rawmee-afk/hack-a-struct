@@ -242,7 +242,7 @@ export default function Dashboard() {
                 <h2 className="text-lg font-display font-bold text-white mb-4 flex items-center gap-2">
                   <Hexagon className="w-5 h-5 text-primary" /> Structural Topography
                 </h2>
-                <FloorPlanModel model={result.model3d} />
+                <FloorPlanModel model={result.model3d} rooms={result.rooms} />
               </div>
 
               <div className="space-y-5">
